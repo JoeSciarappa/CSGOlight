@@ -104,12 +104,12 @@ def firebaseGET():
 		on_now = 0
 		r = requests.get(url)
 		for device in r.json()["devices"]:
-		        if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+		        if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
 				on_previous += 1
 		time.sleep(3)
                 r = requests.get(url)
                 for device in r.json()["devices"]:
-                        if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+                        if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
                                 on_now+=1
 				ondevices+= device
 
@@ -128,7 +128,7 @@ def firebaseGetInit():
 	on = 0
 	ondevices=''
 	for device in r.json()["devices"]:
-		if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+		if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
 			on += 1
 			ondevices += device 
 	if on > 0:
@@ -138,7 +138,7 @@ def firebaseGetInit():
 
 
 def firebasePUT(state):
-	csgoLightServer = 'https://csgo-light.firebaseio.com/devices/joePi.json'
+	csgoLightServer = 'https://csgo-light.firebaseio.com/devices/Joe.json'
 	etime = int(time.time())	
 	requests.put(csgoLightServer, json={"lightStatus": state, "Time changed": etime}).json()
 
