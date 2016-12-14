@@ -24,7 +24,7 @@ import json
 import requests
 import random 
 from subprocess import call
-
+import logging
 
 ###### Initialize GPIO
 #GPIO Mode
@@ -54,6 +54,19 @@ qlist=[led_queue, lcd_queue]
 ########################
 UserIDs=['76561198048899886', '76561197995382883', '76561198036278488', '76561197977936526']
 ########################
+###### Logging
+logger = logging.getLogger('CS:GO Box')
+hdlr = logging.FileHandler('/var/log/csgo.log')
+formatter = logging.Formatter('%(asctime)s %(message)s')
+hdlr.setFormatter(formatter)
+logger.addHandler(hdlr)
+##Set logging Level
+#Options include: CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
+logger.setLevel(logging.DEBUG)
+logger.critical("CS:GO Box starting")
+########################
+importantMessage=0
+
 
 
 #### MySQL Functions ####
@@ -83,13 +96,46 @@ def id_table(SteamID):
 #### Firebase Integration ####
 
 def firebaseGET():
+	global importantMessage
 	url = 'https://csgo-light.firebaseio.com/.json'
 	while True:
-		if (int(time.time()) % 3) == 0:
-			r = requests.get(url)
-			for device in r.json()["devices"]:
-			        if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
-			                lightOn(device)
+		ondevices=''
+		on_previous = 0
+		on_now = 0
+		r = requests.get(url)
+		for device in r.json()["devices"]:
+		        if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+				on_previous += 1
+		time.sleep(3)
+                r = requests.get(url)
+                for device in r.json()["devices"]:
+                        if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+                                on_now+=1
+				ondevices+= device
+
+		if on_previous != on_now and on_now > 0:
+			importantMessage=1
+			logger.info("Light On!")
+			lightOn(ondevices)
+		elif on_previous != on_now and on_now == 0:
+			importantMessage=0
+			logger.info("Light Off!")
+			
+def firebaseGetInit():
+	global importantMessage
+	url = 'https://csgo-light.firebaseio.com/.json'
+	r = requests.get(url)
+	on = 0
+	ondevices=''
+	for device in r.json()["devices"]:
+		if device != 'joePi' and r.json()["devices"][device]["lightStatus"] == 1:
+			on += 1
+			ondevices += device 
+	if on > 0:
+		importantMessage=1
+		logger.info("Light on at startup!")
+		lightOn(ondevices)
+
 
 def firebasePUT(state):
 	csgoLightServer = 'https://csgo-light.firebaseio.com/devices/joePi.json'
@@ -99,13 +145,16 @@ def firebasePUT(state):
 #### Steam API ####
 
 def steamAPI(UserIDs):
-	while True:
-		if (int(time.time()) % 360) == 0:
+	global importantMessage
+	while True:	
+		logger.debug("Time Modulo: " +str(int(time.time()) % 120))
+		logger.debug("important message? " + str(importantMessage))
+		if (int(time.time()) % 120) == 0 and importantMessage == 0:
 			url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
 			for i in UserIDs:
 		        	url += i + ','
 			r = requests.get(url)
-	
+
 			for i in range(len(r.json()["response"]["players"])):
 			        username = r.json()["response"]["players"][i]["personaname"]
 				try:
@@ -113,7 +162,7 @@ def steamAPI(UserIDs):
 		                except KeyError:	
 					state = status_table(r.json()["response"]["players"][i]["personastate"])
 				lcd_queue.put([username, [state], 3])	
-		
+				logger.info([username, [state], 3])	
 
 			for i in UserIDs:
 				statList=[]
@@ -130,7 +179,7 @@ def steamAPI(UserIDs):
 					statString = statKey + ' : ' + str(PlayerStatsDict[statKey])
 					statList.append(statString)
 				lcd_queue.put([username, statList, 1])	
-
+				logger.info([username, statList, 1])
 
 
 			for i in UserIDs:
@@ -138,11 +187,11 @@ def steamAPI(UserIDs):
 			        url='http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=9CA18501EEF1C3007C16222189EC66F8&steamid='
 			        url+=i
 			        r = requests.get(url)
-				game_string = 'Recently Played: ' + r.json()["response"]["games"][0]["name"][:15] 
+				game_string = 'Recently Played: ' + r.json()["response"]["games"][0]["name"][:14] 
 					#+ ' -- Playtime 2 Weeks: ' + str(round(r.json()["response"]["games"][0]["playtime_2weeks"] / float(60),1)) 
 					#+ ' -- Playtime Total: ' + str(round(r.json()["response"]["games"][0]["playtime_forever"] / float(60),1))
 				lcd_queue.put([username, [game_string], 1])
-
+				logger.info([username, [game_string], 1])
 
 		elif (int(time.time()) % 30) == 0:
                         url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
@@ -159,13 +208,18 @@ def steamAPI(UserIDs):
         	                                state = status_table(r.json()["response"]["players"][i]["personastate"])
 					if "In Game:" in state:	
                         	        	lcd_queue.put([username, [state], 3]) 
+						logger.info([username, [state], 3])
+			else:
+				logger.debug("No one in game")
+
 		time.sleep(.7)
 #### Hardware ####
 
 def lightOn(device):
 	led_queue.put( [red_led, 25] )
 	lcd_killandclear()
-        lcd_queue.put( [device + " CS:GO Switch", ["Active"], -1] )
+        lcd_queue.put( [device, ["Active"], -1] )
+	logger.info([device + " Switch", ["Active"], -1] )
 	call(["/usr/bin/omxplayer", "--vol", "1200", "/home/csgo/audio/ready.mp3" ])
 
 
@@ -220,14 +274,15 @@ def lcd_print(queue):
 				payload[0] = ' '*space + payload[0] + ' '*space
 			elif len(payload[0]) > 16:
 				payload[0] = payload[0][:16]
-			if len(payload[1]) == 1 and len(payload[0][1]) < 16:
+			if len(payload[1][i]) < 16:
 				space = (16 - len(payload[1][0])) /2 
 				payload[1][0] = ' '*space + payload[1][0] + ' '*space
 				
 		        lines = [payload[0] , payload[1][i]]
  		        message="\n".join(lines)
+			lcd.clear()
 		        lcd.message(message)	
-			
+		
         		for j in range(len(payload[1][i]) - 16):
 	                        scroller = Scroller(lines=lines)
 				if j == 0:
@@ -253,7 +308,7 @@ def led(queue):
 
 #### Clean Up 		
 def cleanup(queue):
-	print "Cleaning Up"
+	logger.critical("CS:GO Box exiting")
 	for queue in qlist:
 		with queue.mutex:
 			queue.queue.clear()
@@ -264,6 +319,7 @@ def cleanup(queue):
 def lcd_killandclear():
         with lcd_queue.mutex:
                 lcd_queue.queue.clear()
+
 
 ######## Main Function ########
 
@@ -296,27 +352,34 @@ def main():
 
 
 	###### Initial Variables
-	switch_last = switch()
-
+	switch_last = switch()	
+	global importantMessage 
+	firebaseGetInit()
  
 	while True: 
 
 		switch_now = switch()	
 
-		if switch_now != switch_last and switch_now:
+		if switch_now != switch_last and switch_now:	
+			importantMessage = 1
+			logger.info("importantMessage: " + str(importantMessage))
 			led_queue.put( [green_led, 1] )
 			led_queue.put( [blue_led, 1])
 			lcd_killandclear()
                         lcd_queue.put( ["CS:GO Switch", ["Active"], -1] )
+			logger.info(["CS:GO Switch", ["Active"], -1] )
 			firebasePUT(1)
 			call(["/usr/bin/omxplayer", "/home/csgo/audio/lets_roll.wav" ])
 			switch_table(1)
 
-		elif switch_now != switch_last and not switch_now:
+		elif switch_now != switch_last and not switch_now:	
+			importantMessage = 0
+			logger.info("importantMessage: " + str(importantMessage))
 			led_queue.put( [green_led, 1] )
 			led_queue.put( [blue_led, 1] )
 			lcd_killandclear()	
 			lcd_queue.put( ["CS:GO Switch", ["Inactive"], -1] )
+			logger.info(["CS:GO Switch", ["Inactive"], -1] )
 			firebasePUT(0)
 			switch_table(0)
 		
