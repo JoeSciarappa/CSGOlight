@@ -48,11 +48,13 @@ lcd.clear()
 #LED queue
 led_queue = Queue(maxsize=35)
 #LCD Queue
-lcd_queue = Queue(maxsize=15)
+lcd_queue = Queue(maxsize=20)
 #Queue List
 qlist=[led_queue, lcd_queue]
 ########################
 UserIDs=['76561198048899886', '76561197995382883', '76561198036278488', '76561197977936526']
+
+
 ########################
 ###### Logging
 logger = logging.getLogger('CS:GO Box')
@@ -98,44 +100,35 @@ def id_table(SteamID):
 def firebaseGET():
 	global importantMessage
 	url = 'https://csgo-light.firebaseio.com/.json'
+	on_previous = 0
+	on_now = 0
 	while True:
-		ondevices=''
-		on_previous = 0
-		on_now = 0
-		r = requests.get(url)
-		for device in r.json()["devices"]:
-		        if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
-				on_previous += 1
-		time.sleep(3)
-                r = requests.get(url)
-                for device in r.json()["devices"]:
-                        if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
-                                on_now+=1
-				ondevices+= device
+		try:
+	                if int(time.time()) % 2 == 0: 
+				ondevices=''	
+				r = requests.get(url)
+				for device in r.json()["devices"]:
+				        if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
+						on_now += 1
+						ondevices += device
+				logger.debug("lights on: " + str(on_now))
+				logger.debug("Important Message: " + str(importantMessage))
+				if on_previous != on_now and on_now > 0:
+					importantMessage=1
+					logger.info("Light On! " + str(ondevices))
+					lightOnthread = Thread(target=lightOn, args = (ondevices,))
+					lightOnthread.start()
+				elif on_previous != on_now and on_now == 0:
+					importantMessage=0
+					logger.info("Light Off!")
+		        		lcd_queue.put( ["All devices", ["Inactive"], -1] )
 
-		if on_previous != on_now and on_now > 0:
-			importantMessage=1
-			logger.info("Light On!")
-			lightOn(ondevices)
-		elif on_previous != on_now and on_now == 0:
-			importantMessage=0
-			logger.info("Light Off!")
+				on_previous=on_now
+				on_now=0	
+			time.sleep(.5)
+		except ValueError:
+			pass
 			
-def firebaseGetInit():
-	global importantMessage
-	url = 'https://csgo-light.firebaseio.com/.json'
-	r = requests.get(url)
-	on = 0
-	ondevices=''
-	for device in r.json()["devices"]:
-		if device != 'Joe' and r.json()["devices"][device]["lightStatus"] == 1:
-			on += 1
-			ondevices += device 
-	if on > 0:
-		importantMessage=1
-		logger.info("Light on at startup!")
-		lightOn(ondevices)
-
 
 def firebasePUT(state):
 	csgoLightServer = 'https://csgo-light.firebaseio.com/devices/Joe.json'
@@ -144,79 +137,113 @@ def firebasePUT(state):
 
 #### Steam API ####
 
-def steamAPI(UserIDs):
+def steamAPIstatus(UserIDs):
 	global importantMessage
-	while True:	
-		logger.debug("Time Modulo: " +str(int(time.time()) % 120))
-		logger.debug("important message? " + str(importantMessage))
-		if (int(time.time()) % 120) == 0 and importantMessage == 0:
-			url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
-			for i in UserIDs:
-		        	url += i + ','
-			r = requests.get(url)
-
-			for i in range(len(r.json()["response"]["players"])):
-			        username = r.json()["response"]["players"][i]["personaname"]
-				try:
-		                        state = "In Game: " + r.json()["response"]["players"][i]["gameextrainfo"]
-		                except KeyError:	
-					state = status_table(r.json()["response"]["players"][i]["personastate"])
-				lcd_queue.put([username, [state], 3])	
-				logger.info([username, [state], 3])	
-
-			for i in UserIDs:
-				statList=[]
-				username = id_table(i)
-			        url='http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=9CA18501EEF1C3007C16222189EC66F8&steamid='
-			        url+=i
-			        r = requests.get(url)
-			        PlayerStatsDict={}
-			        for j in range(len(r.json()["playerstats"]["stats"])):
-					if "GI.lesson" not in r.json()["playerstats"]["stats"][j]["name"] and "gg_contribution" not in r.json()["playerstats"]["stats"][j]["name"]:
-			                	PlayerStatsDict.update({r.json()["playerstats"]["stats"][j]["name"].replace("_", " ") : r.json()["playerstats"]["stats"][j]["value"]})
-				for k in range(2):
-					statKey = random.choice(PlayerStatsDict.keys())
-					statString = statKey + ' : ' + str(PlayerStatsDict[statKey])
-					statList.append(statString)
-				lcd_queue.put([username, statList, 1])	
-				logger.info([username, statList, 1])
-
-
-			for i in UserIDs:
-				username = id_table(i)
-			        url='http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=9CA18501EEF1C3007C16222189EC66F8&steamid='
-			        url+=i
-			        r = requests.get(url)
-				game_string = 'Recently Played: ' + r.json()["response"]["games"][0]["name"][:14] 
-					#+ ' -- Playtime 2 Weeks: ' + str(round(r.json()["response"]["games"][0]["playtime_2weeks"] / float(60),1)) 
-					#+ ' -- Playtime Total: ' + str(round(r.json()["response"]["games"][0]["playtime_forever"] / float(60),1))
-				lcd_queue.put([username, [game_string], 1])
-				logger.info([username, [game_string], 1])
-
-		elif (int(time.time()) % 30) == 0:
-                        url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
-                        for i in UserIDs:
-                                url += i + ','
-                        r = requests.get(url)
-			if "gameextrainfo" in str(r.json()['response']['players']):
-				lcd_killandclear()	
+	while True:
+		try:
+			if (int(time.time()) % 1200) % 43 == 0 and importantMessage == 0:
+				url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
+				for i in UserIDs:
+					url += i + ','
+				r = requests.get(url)
 				for i in range(len(r.json()["response"]["players"])):
 					username = r.json()["response"]["players"][i]["personaname"]
-                        	        try:
-                                	        state = "In Game: " + r.json()["response"]["players"][i]["gameextrainfo"]
-	                                except KeyError:
-        	                                state = status_table(r.json()["response"]["players"][i]["personastate"])
-					if "In Game:" in state:	
-                        	        	lcd_queue.put([username, [state], 3]) 
-						logger.info([username, [state], 3])
-			else:
-				logger.debug("No one in game")
+					try:
+						state = "In Game: " + r.json()["response"]["players"][i]["gameextrainfo"]
+					except KeyError:
+						state = status_table(r.json()["response"]["players"][i]["personastate"])
+					lcd_queue.put([username, [state], 2])
+					logger.info([username, [state], 2])
+			time.sleep(.9)
+		except ValueError:
+			pass
 
-		time.sleep(.7)
+def steamAPIinGame(UserIDs):
+	global importantMessage
+	ingame = 0
+	while True:
+		try:
+	                if ((int(time.time()) % 1200) % 17) == 0:
+        	                url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
+	                        for i in UserIDs:
+        	                        url += i + ','
+                	        r = requests.get(url)
+	                        if "gameextrainfo" in str(r.json()['response']['players']):
+        	                        lcd_killandclear()
+                	                for i in range(len(r.json()["response"]["players"])):
+	                                        username = r.json()["response"]["players"][i]["personaname"]
+        	                                try:
+                	                                state = "In Game: " + r.json()["response"]["players"][i]["gameextrainfo"]
+	                                        except KeyError:
+        	                                        state = status_table(r.json()["response"]["players"][i]["personastate"])
+                	                        if "In Game:" in state:
+	                                                lcd_queue.put([username, [state], 1])
+        	                                        led_queue.put( [blue_led, 6] )
+                	                                importantMessage = 1
+                        	                        ingame = 1
+	                                                logger.info([username, [state], 1])
+        	                else:
+                	                logger.debug("No one in game")
+                        	        if ingame == 1 and importantMessage == 1:
+                                	        ingame = 0
+                                        	importantMessage = 0
+	
+			time.sleep(1.1)
+		except ValueError:
+			pass
+
+def steamAPIstats(UserIDs):
+	global importantMessage
+	while True:
+		try:
+	                if ((int(time.time()) % 1200) % 157) == 0 and importantMessage == 0:
+				statArray=[]
+                	        for i in UserIDs:
+                        	        statList=[]
+                                	username = id_table(i)
+	                                url='http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=9CA18501EEF1C3007C16222189EC66F8&steamid='
+        	                        url+=i
+                	                r = requests.get(url)
+                        	        PlayerStatsDict={}
+                                	for j in range(len(r.json()["playerstats"]["stats"])):
+	                                        if "GI.lesson" not in r.json()["playerstats"]["stats"][j]["name"] and "gg_contribution" not in r.json()["playerstats"]["stats"][j]["name"]:
+        	                                        PlayerStatsDict.update({r.json()["playerstats"]["stats"][j]["name"].replace("_", " ") : r.json()["playerstats"]["stats"][j]["value"]})
+                	                for k in range(2):
+                        	                statKey = random.choice(PlayerStatsDict.keys())
+                                	        statString = statKey + ' : ' + str(PlayerStatsDict[statKey])
+                                        	statList.append(statString)
+					statArray.append([username, statList, 1])
+	
+				for i in range(len(statArray)):
+					lcd_queue.put(statArray[i])
+					logger.info(statArray[i])
+			time.sleep(1.1)
+		except ValueError:
+			pass
+
+def steamAPIrecent(UserIDs):
+	global importantMessage
+	while True:
+		try:
+	                if (int(time.time()) % 1200) % 1193 == 0 and importantMessage == 0:
+        	                for i in UserIDs:
+                	                username = id_table(i)
+					logger.debug("getting " + username + " recents")
+	                                url='http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=9CA18501EEF1C3007C16222189EC66F8&steamid='
+        	                        url+=i
+                	                r = requests.get(url)
+	                                game_string = ['Recently Played: ' + r.json()["response"]["games"][0]["name"][:14]  , 'Playtime 2 Weeks: ' + str(round(r.json()["response"]["games"][0]["playtime_2weeks"] / float(60),1)), 'Playtime Total: ' + str(round(r.json()["response"]["games"][0]["playtime_forever"] / float(60),1)) ]
+        	                        lcd_queue.put([username, game_string, 1])
+                	                logger.info([username, game_string, 1])
+				time.sleep(5)
+
+			time.sleep(1.1)
+		except ValueError:
+			pass
 #### Hardware ####
 
 def lightOn(device):
-	led_queue.put( [red_led, 25] )
+	led_queue.put( [red_led, 21] )
 	lcd_killandclear()
         lcd_queue.put( [device, ["Active"], -1] )
 	logger.info([device + " Switch", ["Active"], -1] )
@@ -274,25 +301,32 @@ def lcd_print(queue):
 				payload[0] = ' '*space + payload[0] + ' '*space
 			elif len(payload[0]) > 16:
 				payload[0] = payload[0][:16]
+
 			if len(payload[1][i]) < 16:
 				space = (16 - len(payload[1][0])) /2 
-				payload[1][0] = ' '*space + payload[1][0] + ' '*space
+				payload[1][0] = ' '*space + payload[1][0] 	
+			elif len(payload[1][i]) > 16:
+				payload[1][i] = ' ' + payload[1][i]
 				
+	
 		        lines = [payload[0] , payload[1][i]]
- 		        message="\n".join(lines)
-			lcd.clear()
-		        lcd.message(message)	
-		
-        		for j in range(len(payload[1][i]) - 16):
-	                        scroller = Scroller(lines=lines)
-				if j == 0:
-					time.sleep(2)
-				elif j == (len(payload[1][i]) - 16):
-					time.sleep(1.1)
-                		message = scroller.scroll()
-                		lcd.clear()
-                		lcd.message(message)
-                		time.sleep(.9)
+ 		        message="\n".join(lines)	
+
+			if len(payload[1][i]) <= 16:
+				lcd.clear()	
+			        lcd.message(message)
+				time.sleep(1.5)
+			else:	
+	        		for j in range(len(payload[1][i]) - 16):
+		                        scroller = Scroller(lines=lines)
+					message = scroller.scroll()
+					lcd.clear()
+					lcd.message(message)
+					if j == 0:
+						time.sleep(1.5)
+					if j == (len(payload[1][i]) - 17):	
+						time.sleep(1.1)
+                			time.sleep(.9)
 			if payload[2] != -1:
 				time.sleep(payload[2])
 				lcd.clear() 
@@ -327,17 +361,31 @@ def main():
 
 	###### Queue & Threads
 	#LED Queue Thread
-	worker = Thread(target=led, args=(led_queue,))
-	worker.setDaemon(True)
-	worker.start()
+	ledthread = Thread(target=led, args=(led_queue,))
+	ledthread.setDaemon(True)
+	ledthread.start()
 	#LCD Queue Thread
-        worker = Thread(target=lcd_print, args=(lcd_queue,))
-        worker.setDaemon(True)
-        worker.start()
-	#Steam Thread
-        steamthread = Thread(target=steamAPI, args=(UserIDs,))
-	steamthread.setDaemon(True)
-	steamthread.start()
+        lcdthread = Thread(target=lcd_print, args=(lcd_queue,))
+        lcdthread.setDaemon(True)
+        lcdthread.start()
+	#Steam Threads
+	steamAPIstatusThread = Thread(target=steamAPIstatus, args=(UserIDs,))
+	steamAPIstatusThread.setDaemon(True)
+	steamAPIstatusThread.start()
+
+	steamAPIinGameThread = Thread(target=steamAPIinGame, args=(UserIDs,))
+	steamAPIinGameThread.setDaemon(True)
+	steamAPIinGameThread.start()
+
+	steamAPIstatsThread = Thread(target=steamAPIstats, args=(UserIDs,))
+	steamAPIstatsThread.setDaemon(True)
+	steamAPIstatsThread.start()
+
+	steamAPIrecentThread = Thread(target=steamAPIrecent, args=(UserIDs,))
+	steamAPIrecentThread.setDaemon(True)
+	steamAPIrecentThread.start()
+
+
 	########################
 	#Firebase Thread
         firebasethread = Thread(target=firebaseGET)
@@ -354,7 +402,6 @@ def main():
 	###### Initial Variables
 	switch_last = switch()	
 	global importantMessage 
-	firebaseGetInit()
  
 	while True: 
 
@@ -378,8 +425,8 @@ def main():
 			led_queue.put( [green_led, 1] )
 			led_queue.put( [blue_led, 1] )
 			lcd_killandclear()	
-			lcd_queue.put( ["CS:GO Switch", ["Inactive"], -1] )
-			logger.info(["CS:GO Switch", ["Inactive"], -1] )
+			lcd_queue.put( ["CS:GO Switch", ["Inactive"], 3] )
+			logger.info(["CS:GO Switch", ["Inactive"], 3] )
 			firebasePUT(0)
 			switch_table(0)
 		
