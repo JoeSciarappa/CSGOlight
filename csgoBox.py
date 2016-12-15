@@ -425,8 +425,8 @@ def main():
 			led_queue.put( [green_led, 1] )
 			led_queue.put( [blue_led, 1] )
 			lcd_killandclear()	
-			lcd_queue.put( ["CS:GO Switch", ["Inactive"], 3] )
-			logger.info(["CS:GO Switch", ["Inactive"], 3] )
+			lcd_queue.put( ["CS:GO Switch", ["Inactive"], -1] )
+			logger.info(["CS:GO Switch", ["Inactive"], -1] )
 			firebasePUT(0)
 			switch_table(0)
 		
