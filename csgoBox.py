@@ -142,7 +142,7 @@ def steamAPIstatus(UserIDs):
 	while True:
 		try:
 			if (int(time.time()) % 1200) % 43 == 0 and importantMessage == 0:
-				url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
+				url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=&steamids='
 				for i in UserIDs:
 					url += i + ','
 				r = requests.get(url)
