@@ -164,7 +164,7 @@ def steamAPIinGame(UserIDs):
 	while True:
 		try:
 	                if ((int(time.time()) % 1200) % 17) == 0:
-        	                url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=9CA18501EEF1C3007C16222189EC66F8&steamids='
+        	                url = 'http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=&steamids='
 	                        for i in UserIDs:
         	                        url += i + ','
                 	        r = requests.get(url)
@@ -201,7 +201,7 @@ def steamAPIstats(UserIDs):
                 	        for i in UserIDs:
                         	        statList=[]
                                 	username = id_table(i)
-	                                url='http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=9CA18501EEF1C3007C16222189EC66F8&steamid='
+	                                url='http://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=&steamid='
         	                        url+=i
                 	                r = requests.get(url)
                         	        PlayerStatsDict={}
@@ -229,7 +229,7 @@ def steamAPIrecent(UserIDs):
         	                for i in UserIDs:
                 	                username = id_table(i)
 					logger.debug("getting " + username + " recents")
-	                                url='http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=9CA18501EEF1C3007C16222189EC66F8&steamid='
+	                                url='http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key=&steamid='
         	                        url+=i
                 	                r = requests.get(url)
 	                                game_string = ['Recently Played: ' + r.json()["response"]["games"][0]["name"][:14]  , 'Playtime 2 Weeks: ' + str(round(r.json()["response"]["games"][0]["playtime_2weeks"] / float(60),1)), 'Playtime Total: ' + str(round(r.json()["response"]["games"][0]["playtime_forever"] / float(60),1)) ]
