@@ -73,14 +73,14 @@ importantMessage=0
 
 #### MySQL Functions ####
 def switch_table(state):
-	mariadb_connection = mariadb.connect(user='csgo', password='ZWU1MDk1ZDExY2M', database='csgo')
+	mariadb_connection = mariadb.connect(user='csgo', password='', database='csgo')
 	cursor = mariadb_connection.cursor(dictionary=True)
 	cursor.execute('''INSERT INTO switch (switch) VALUES (%s)''' %(state))
 	mariadb_connection.commit()
 	mariadb_connection.close()
 
 def status_table(status):
-	mariadb_connection = mariadb.connect(user='csgo', password='ZWU1MDk1ZDExY2M', database='csgo')
+	mariadb_connection = mariadb.connect(user='csgo', password='', database='csgo')
         cursor = mariadb_connection.cursor(dictionary=True)	
 	cursor.execute('''SELECT status FROM steam_status WHERE code = "%s"''' %(status))
         status = cursor.fetchone()['status']
@@ -88,7 +88,7 @@ def status_table(status):
         mariadb_connection.close()
 	return status
 def id_table(SteamID):
-        mariadb_connection = mariadb.connect(user='csgo', password='ZWU1MDk1ZDExY2M', database='csgo')
+        mariadb_connection = mariadb.connect(user='csgo', password='', database='csgo')
         cursor = mariadb_connection.cursor(dictionary=True)
         cursor.execute('''SELECT username FROM steam_ids WHERE id = %s''' %(SteamID))
         username = cursor.fetchone()['username']
